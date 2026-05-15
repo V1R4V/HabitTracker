@@ -1,0 +1,74 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Build output
+.next/
+out/
+dist/
+build/
+.vercel/
+tsconfig.tsbuildinfo
+
+# Local environment files
+.env
+.env.*
+!.env.example
+.env*.local
+
+# Secrets / credentials
+*.pem
+*.key
+*.p8
+*.p12
+*.crt
+*.cert
+*secret*
+*secrets*
+*credential*
+*credentials*
+service-account*.json
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Local databases and generated backups
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.backup
+*.bak
+*.csv
+*.tsv
+*.jsonl
+backups/
+exports/
+private/
+local/
+
+# Supabase local development artifacts
+.supabase/
+supabase/.branches/
+supabase/.temp/
+
+# Test/build caches
+coverage/
+.turbo/
+.cache/
+.eslintcache
+
+*.xlsx

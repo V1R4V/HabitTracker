@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Habit Command Center</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">HC</div>
+          <div>
+            <h1>Habit Command Center</h1>
+            <p>Plan, track, score, adjust.</p>
+          </div>
+        </div>
+        <nav class="nav" aria-label="Primary">
+          <button class="nav-button active" data-view="dashboard">Dashboard</button>
+          <button class="nav-button" data-view="today">Today</button>
+          <button class="nav-button" data-view="planner">Planner</button>
+          <button class="nav-button" data-view="tasks">Tasks</button>
+          <button class="nav-button" data-view="settings">Settings</button>
+        </nav>
+        <div class="sidebar-panel">
+          <span class="eyebrow">Local data</span>
+          <p>Everything is stored in this browser. Export backups from Settings.</p>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow" id="todayLabel">Today</p>
+            <h2 id="viewTitle">Dashboard</h2>
+          </div>
+          <div class="topbar-actions">
+            <input type="date" id="activeDate" />
+            <button class="secondary" id="resetSeed">Reset seed data</button>
+          </div>
+        </header>
+
+        <section id="dashboard" class="view active"></section>
+        <section id="today" class="view"></section>
+        <section id="planner" class="view"></section>
+        <section id="tasks" class="view"></section>
+        <section id="settings" class="view"></section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
