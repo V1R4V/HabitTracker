@@ -91,6 +91,7 @@ Create `.env.local` from `.env.example` and fill in the required values:
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=your-supabase-project-url
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+# Or use NEXT_PUBLIC_SUPABASE_ANON_KEY if your project only has a legacy anon key.
 APP_ALLOWED_EMAILS=your_email@example.com
 ```
 
@@ -122,9 +123,9 @@ The migration creates the private habit, task, plan, log, category, and weekly n
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=your-supabase-project-url
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+# Or use NEXT_PUBLIC_SUPABASE_ANON_KEY if your project only has a legacy anon key.
 APP_ALLOWED_EMAILS=your_email@example.com
 ```
 
 4. Run the Supabase migration against the production Supabase project.
 5. Deploy. Vercel should detect Next.js and run `npm run build` automatically.
-
