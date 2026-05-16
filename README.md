@@ -110,9 +110,45 @@ npm run lint
 npm run typecheck
 npm run build
 ```
+
+## Database Setup
+
+Run the migration in Supabase SQL Editor or through the Supabase CLI:
+
+```text
+supabase/migrations/202605150001_initial_schema.sql
 ```
 
 The migration creates the private habit, task, plan, log, category, and weekly note tables with row-level security policies.
+
+## Google Sign-In
+
+Google sign-in uses Supabase Auth's Google provider. Do not enable Supabase OAuth Server for this use case unless Habit Command Center needs to act as an identity provider for other third-party applications.
+
+In Supabase:
+
+1. Go to Auth > Providers > Google.
+2. Enable Google.
+3. Add the Google OAuth client ID and client secret from Google Cloud.
+4. In Auth > URL Configuration, set Site URL to your deployed app URL.
+5. Add redirect URLs for production and local development:
+
+```text
+https://your-vercel-domain.vercel.app/auth/callback
+http://localhost:3000/auth/callback
+```
+
+In Google Cloud:
+
+1. Create an OAuth Client ID with application type Web application.
+2. Add your app URL under Authorized JavaScript origins.
+3. Add the Supabase callback URL under Authorized redirect URIs:
+
+```text
+https://your-supabase-project-ref.supabase.co/auth/v1/callback
+```
+
+Use the exact callback URL shown in the Supabase Google provider screen.
 
 ## Deploy to Vercel
 
@@ -129,3 +165,9 @@ APP_ALLOWED_EMAILS=your_email@example.com
 
 4. Run the Supabase migration against the production Supabase project.
 5. Deploy. Vercel should detect Next.js and run `npm run build` automatically.
+
+## Privacy And Safety
+
+This app is designed for private personal data. Do not commit real environment files, database exports, spreadsheets, keys, or generated backups.
+
+Use `.env.example` as the public template and store production secrets only in Vercel and Supabase.

@@ -9,6 +9,7 @@ export default function LoginPage() {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -45,6 +46,32 @@ export default function LoginPage() {
     window.location.href = "/";
   }
 
+  async function signInWithGoogle() {
+    setGoogleLoading(true);
+    setMessage("");
+    let supabase: ReturnType<typeof createClient>;
+
+    try {
+      supabase = createClient();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Supabase configuration is missing.");
+      setGoogleLoading(false);
+      return;
+    }
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
+
+    if (error) {
+      setMessage(error.message);
+      setGoogleLoading(false);
+    }
+  }
+
   return (
     <main className="login-screen">
       <section className="login-panel">
@@ -69,6 +96,11 @@ export default function LoginPage() {
             {loading ? "Working..." : mode === "signin" ? "Sign in" : "Create account"}
           </button>
         </form>
+        <div className="auth-divider"><span>or</span></div>
+        <button type="button" className="secondary oauth-button" disabled={googleLoading} onClick={signInWithGoogle}>
+          <span className="google-mark" aria-hidden="true">G</span>
+          {googleLoading ? "Opening Google..." : "Continue with Google"}
+        </button>
         <button className="link-button" onClick={() => setMode(mode === "signin" ? "signup" : "signin")}>
           {mode === "signin" ? "Need to create your account?" : "Already have an account?"}
         </button>

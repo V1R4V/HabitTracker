@@ -700,6 +700,41 @@ button:disabled:hover {
   color: var(--danger);
 }
 
+.auth-divider {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin: 16px 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+  content: "";
+}
+
+.oauth-button {
+  width: 100%;
+}
+
+.google-mark {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #1f1f1f;
+  font-size: 13px;
+  font-weight: 850;
+}
+
 .link-button {
   margin-top: 14px;
   background: transparent;
