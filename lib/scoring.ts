@@ -27,7 +27,9 @@ function itemScore(item: Pick<Item, "tracking_type" | "default_target">, actual:
   if (status === "pending") return null;
   if (status === "missed") return 0;
   if (item.tracking_type === "done") return 1;
-  return Math.max(0, Math.min(Number(actual || 0) / Number(item.default_target || 1), 1));
+  const actualNum = Number(actual || 0);
+  if (actualNum <= 0) return 1;
+  return Math.max(0, Math.min(actualNum / Number(item.default_target || 1), 1));
 }
 
 export function scoreForDate(data: AppData, date: string) {

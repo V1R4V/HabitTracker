@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3,
   CalendarDays,
@@ -10,6 +10,7 @@ import {
   ClipboardList,
   Download,
   Moon,
+  Notebook,
   Plus,
   Save,
   Settings as SettingsIcon,
@@ -32,9 +33,9 @@ import { addDays, dateRange, dayName, formatDate, monthDates, startOfWeek, today
 import { aggregateScores, priorityWeights, scoreForDate } from "../lib/scoring";
 import { buildSeed, itemSeeds, planSeeds, taskSeeds } from "../lib/seed";
 import { createClient } from "../lib/supabase/client";
-import type { AppData, Category, Item, Log, LogStatus, Plan, Priority, Task, TaskStatus, TrackingType, WeeklyNote } from "../lib/types";
+import type { AppData, Category, Item, Log, LogStatus, Note, Plan, Priority, Task, TaskStatus, TrackingType, WeeklyNote } from "../lib/types";
 
-const emptyData: AppData = { categories: [], items: [], tasks: [], plans: [], logs: [], weeklyNotes: [] };
+const emptyData: AppData = { categories: [], items: [], tasks: [], plans: [], logs: [], weeklyNotes: [], notes: [] };
 const colors = ["#21715d", "#315f9a", "#b94f2d", "#8a6b18", "#6f4aa3", "#417b72", "#9b3d55"];
 const priorityLabels: Record<Priority, string> = { low: "Low", normal: "Normal", high: "High", critical: "Critical" };
 const statusLabels: Record<string, string> = {
@@ -51,6 +52,7 @@ const navItems = [
   { name: "today", label: "Today", icon: CheckSquare },
   { name: "planner", label: "Planner", icon: CalendarDays },
   { name: "tasks", label: "Tasks", icon: ClipboardList },
+  { name: "notes", label: "Notes", icon: Notebook },
   { name: "settings", label: "Settings", icon: SettingsIcon },
 ];
 
@@ -63,7 +65,7 @@ export default function HabitApp({ userId, userEmail, initialDate }: { userId: s
   const [toast, setToast] = useState("");
   const [theme, setTheme] = useState("dark");
   const [hydrated, setHydrated] = useState(false);
-  const showDateTools = view !== "settings";
+  const showDateTools = view !== "settings" && view !== "notes";
 
   useEffect(() => {
     const saved = window.localStorage.getItem("hcc-theme");
@@ -90,30 +92,31 @@ export default function HabitApp({ userId, userEmail, initialDate }: { userId: s
   }, [activeDate, hydrated]);
 
   useEffect(() => {
-    void loadData(true);
+    void loadData(true, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function loadData(seedIfEmpty = false) {
-    setLoading(true);
-    const [categories, items, tasks, plans, logs, weeklyNotes] = await Promise.all([
+  async function loadData(seedIfEmpty = false, silent = true) {
+    if (!silent) setLoading(true);
+    const [categories, items, tasks, plans, logs, weeklyNotes, notes] = await Promise.all([
       supabase.from("categories").select("*").order("sort_order"),
       supabase.from("items").select("*").order("name"),
       supabase.from("tasks").select("*").order("deadline_date"),
       supabase.from("plans").select("*").order("date"),
       supabase.from("logs").select("*").order("date"),
       supabase.from("weekly_notes").select("*").order("week_start_date"),
+      supabase.from("notes").select("*").order("created_at", { ascending: false }),
     ]);
 
-    if (categories.error || items.error || tasks.error || plans.error || logs.error || weeklyNotes.error) {
+    if (categories.error || items.error || tasks.error || plans.error || logs.error || weeklyNotes.error || notes.error) {
       showToast("Database read failed. Check migration and RLS setup.");
-      setLoading(false);
+      if (!silent) setLoading(false);
       return;
     }
 
     if (seedIfEmpty && (categories.data?.length || 0) === 0) {
       await seedDefaultData();
-      return loadData(false);
+      return loadData(false, silent);
     }
 
     setData({
@@ -123,9 +126,12 @@ export default function HabitApp({ userId, userEmail, initialDate }: { userId: s
       plans: (plans.data || []) as Plan[],
       logs: (logs.data || []) as Log[],
       weeklyNotes: (weeklyNotes.data || []) as WeeklyNote[],
+      notes: (notes.data || []) as Note[],
     });
     setLoading(false);
   }
+
+  const refetch = () => loadData(false, true);
 
   async function seedDefaultData() {
     const categorySeed = buildSeed(userId).categories;
@@ -169,6 +175,18 @@ export default function HabitApp({ userId, userEmail, initialDate }: { userId: s
 
   function setLogs(updater: (logs: Log[]) => Log[]) {
     setData((current) => ({ ...current, logs: updater(current.logs) }));
+  }
+
+  function setWeeklyNotes(updater: (weeklyNotes: WeeklyNote[]) => WeeklyNote[]) {
+    setData((current) => ({ ...current, weeklyNotes: updater(current.weeklyNotes) }));
+  }
+
+  function setNotes(updater: (notes: Note[]) => Note[]) {
+    setData((current) => ({ ...current, notes: updater(current.notes) }));
+  }
+
+  function setTasks(updater: (tasks: Task[]) => Task[]) {
+    setData((current) => ({ ...current, tasks: updater(current.tasks) }));
   }
 
   const week = dateRange(startOfWeek(activeDate), 7);
@@ -222,10 +240,11 @@ export default function HabitApp({ userId, userEmail, initialDate }: { userId: s
         </header>
         {loading ? <div className="panel">Loading private tracker data...</div> : null}
         {!loading && view === "dashboard" ? <Dashboard data={data} activeDate={activeDate} month={month} week={week} dayScore={dayScore} weekScore={weekScore} monthScore={monthScore} setActiveDate={setActiveDate} setView={setView} /> : null}
-        {!loading && view === "today" ? <Today data={data} activeDate={activeDate} userId={userId} supabase={supabase} refresh={() => loadData(false)} showToast={showToast} setLogs={setLogs} /> : null}
-        {!loading && view === "planner" ? <Planner data={data} week={week} userId={userId} supabase={supabase} refresh={() => loadData(false)} showToast={showToast} setPlans={setPlans} /> : null}
-        {!loading && view === "tasks" ? <Tasks data={data} userId={userId} supabase={supabase} refresh={() => loadData(false)} showToast={showToast} /> : null}
-        {!loading && view === "settings" ? <Settings data={data} userId={userId} supabase={supabase} refresh={() => loadData(false)} showToast={showToast} /> : null}
+        {!loading && view === "today" ? <Today data={data} activeDate={activeDate} userId={userId} supabase={supabase} refresh={refetch} showToast={showToast} setLogs={setLogs} /> : null}
+        {!loading && view === "planner" ? <Planner data={data} week={week} activeDate={activeDate} userId={userId} supabase={supabase} refresh={refetch} showToast={showToast} setPlans={setPlans} setWeeklyNotes={setWeeklyNotes} /> : null}
+        {!loading && view === "tasks" ? <Tasks data={data} userId={userId} supabase={supabase} refresh={refetch} showToast={showToast} setTasks={setTasks} /> : null}
+        {!loading && view === "notes" ? <Notes data={data} userId={userId} supabase={supabase} refresh={refetch} showToast={showToast} setNotes={setNotes} /> : null}
+        {!loading && view === "settings" ? <Settings data={data} userId={userId} supabase={supabase} refresh={refetch} showToast={showToast} /> : null}
       </main>
       {toast ? <div className="toast visible">{toast}</div> : null}
     </div>
@@ -350,7 +369,6 @@ function Today({
   activeDate,
   userId,
   supabase,
-  refresh,
   showToast,
   setLogs,
 }: CrudProps & { activeDate: string; setLogs: (updater: (logs: Log[]) => Log[]) => void }) {
@@ -392,7 +410,7 @@ function Today({
     const item = data.items.find((candidate) => candidate.id === itemId);
     const actual = Number(formData.get("actual_value") || 0);
     if (!item) return showToast("Choose an active item before logging extra work.");
-    const { error } = await supabase.from("logs").insert({
+    const { data: inserted, error } = await supabase.from("logs").insert({
       user_id: userId,
       date: activeDate,
       item_id: itemId,
@@ -401,10 +419,10 @@ function Today({
       status: "complete",
       is_extra: true,
       notes: String(formData.get("notes") || ""),
-    });
+    }).select("*").single();
     if (error) return showToast(`Extra work save failed: ${error.message}`);
+    if (inserted) setLogs((current) => upsertLog(current, inserted as Log));
     showToast(`Extra ${item?.name || "work"} logged.`);
-    await refresh();
   }
 
   return (
@@ -482,16 +500,31 @@ function LogRow({
 function Planner({
   data,
   week,
+  activeDate,
   userId,
   supabase,
-  refresh,
   showToast,
   setPlans,
-}: CrudProps & { week: string[]; setPlans: (updater: (plans: Plan[]) => Plan[]) => void }) {
+  setWeeklyNotes,
+}: CrudProps & {
+  week: string[];
+  activeDate: string;
+  setPlans: (updater: (plans: Plan[]) => Plan[]) => void;
+  setWeeklyNotes: (updater: (weeklyNotes: WeeklyNote[]) => WeeklyNote[]) => void;
+}) {
   const weekStart = week[0];
   const note = data.weeklyNotes.find((candidate) => candidate.week_start_date === weekStart);
   const [localPlans, setLocalPlans] = useState(data.plans);
   const [savingPlanKeys, setSavingPlanKeys] = useState<Set<string>>(new Set());
+  const [range, setRange] = useState<"day" | "week">(() => {
+    if (typeof window === "undefined") return "week";
+    return (window.localStorage.getItem("hcc-planner-range") as "day" | "week") || "week";
+  });
+  const visibleDays = range === "day" ? [activeDate] : week;
+
+  useEffect(() => {
+    window.localStorage.setItem("hcc-planner-range", range);
+  }, [range]);
 
   useEffect(() => {
     setLocalPlans(data.plans);
@@ -549,89 +582,45 @@ function Planner({
     setSavingPlanKeys((current) => removeFromSet(current, key));
   }
 
-  async function toggleTaskPlan(date: string, task: Task, scheduled: boolean) {
-    const key = planKey(date, task.id);
-    const previousPlans = localPlans;
-    const optimisticUpdate = (current: Plan[]) => optimisticPlans(current, { userId, date, itemId: null, taskId: task.id, scheduled, target: 1 });
-    setSavingPlanKeys((current) => new Set(current).add(key));
-    setLocalPlans(optimisticUpdate);
-    setPlans(optimisticUpdate);
-    const { data: existing, error: lookupError } = await supabase
-      .from("plans")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("date", date)
-      .eq("task_id", task.id)
-      .is("item_id", null)
-      .maybeSingle();
-    if (lookupError) {
-      setLocalPlans(previousPlans);
-      setPlans(() => previousPlans);
-      setSavingPlanKeys((current) => removeFromSet(current, key));
-      showToast(`Could not check ${task.title}: ${lookupError.message}`);
-      return;
+  async function saveNote(formData: FormData) {
+    const body = String(formData.get("body") || "");
+    const { data: saved, error } = await supabase.from("weekly_notes").upsert(
+      { user_id: userId, week_start_date: weekStart, body },
+      { onConflict: "user_id,week_start_date" },
+    ).select("*").single();
+    if (error) return showToast(`Weekly note save failed: ${error.message}`);
+    if (saved) {
+      setWeeklyNotes((current) => {
+        const without = current.filter((n) => !(n.user_id === userId && n.week_start_date === weekStart));
+        return [...without, saved as WeeklyNote];
+      });
     }
-    const result = existing
-      ? await supabase.from("plans").update({ scheduled, target: 1 }).eq("id", existing.id).select("*").single()
-      : await supabase.from("plans").insert({
-          user_id: userId,
-          date,
-          item_id: null,
-          task_id: task.id,
-          scheduled,
-          target: 1,
-          source: "weekly_plan",
-        }).select("*").single();
-    if (result.error) {
-      setLocalPlans(previousPlans);
-      setPlans(() => previousPlans);
-      setSavingPlanKeys((current) => removeFromSet(current, key));
-      showToast(`Could not update ${task.title}: ${result.error.message}`);
-      return;
-    }
-    if (result.data) {
-      const savedPlan = result.data as Plan;
-      setLocalPlans((current) => upsertPlan(current, savedPlan));
-      setPlans((current) => upsertPlan(current, savedPlan));
-    }
-    setSavingPlanKeys((current) => removeFromSet(current, key));
+    showToast("Weekly note saved.");
   }
 
-  async function saveNote(formData: FormData) {
-    const { error } = await supabase.from("weekly_notes").upsert(
-      { user_id: userId, week_start_date: weekStart, body: String(formData.get("body") || "") },
-      { onConflict: "user_id,week_start_date" },
-    );
-    if (error) return showToast(`Weekly note save failed: ${error.message}`);
-    showToast("Weekly note saved.");
-    await refresh();
-  }
+  const rangeLabel = range === "day" ? formatDate(activeDate) : `${formatDate(week[0])} - ${formatDate(week[6])}`;
 
   return (
     <div className="grid">
       <section className="panel">
-        <div className="section-title"><h3>{formatDate(week[0])} - {formatDate(week[6])}</h3><span>Schedule items and tasks</span></div>
+        <div className="section-title">
+          <h3>{rangeLabel}</h3>
+          <div className="range-toggle" role="tablist" aria-label="Planner range">
+            <button type="button" role="tab" aria-selected={range === "day"} className={range === "day" ? "active" : ""} onClick={() => setRange("day")}>Day</button>
+            <button type="button" role="tab" aria-selected={range === "week"} className={range === "week" ? "active" : ""} onClick={() => setRange("week")}>Week</button>
+          </div>
+        </div>
         <div className="table-wrap">
           <table className="planner-table">
-            <thead><tr><th>Item</th>{week.map((date) => <th key={date}>{dayName(date)}<br />{formatDate(date)}</th>)}</tr></thead>
+            <thead><tr><th>Habit</th>{visibleDays.map((date) => <th key={date}>{dayName(date)}<br />{formatDate(date)}</th>)}</tr></thead>
             <tbody>
               {data.items.filter((item) => item.active).map((item) => (
                 <tr key={item.id}>
                   <td><strong>{item.name}</strong><br /><span className="muted">{priorityLabels[item.priority]} / {formatItemTarget(item)}</span></td>
-                  {week.map((date) => {
+                  {visibleDays.map((date) => {
                     const plan = localPlans.find((candidate) => candidate.date === date && candidate.item_id === item.id);
                     const key = planKey(date, item.id);
                     return <td key={date}><label className={`plan-check ${savingPlanKeys.has(key) ? "saving" : ""}`}><input type="checkbox" checked={Boolean(plan?.scheduled)} onChange={(event) => togglePlan(date, item, event.target.checked)} /><span /></label></td>;
-                  })}
-                </tr>
-              ))}
-              {data.tasks.map((task) => (
-                <tr key={task.id}>
-                  <td><strong>{task.title}</strong><br /><span className="muted">Task / due {formatDate(task.deadline_date)}</span></td>
-                  {week.map((date) => {
-                    const plan = localPlans.find((candidate) => candidate.date === date && candidate.task_id === task.id);
-                    const key = planKey(date, task.id);
-                    return <td key={date}><label className={`plan-check ${savingPlanKeys.has(key) ? "saving" : ""}`}><input type="checkbox" checked={Boolean(plan?.scheduled)} onChange={(event) => toggleTaskPlan(date, task, event.target.checked)} /><span /></label></td>;
                   })}
                 </tr>
               ))}
@@ -650,8 +639,10 @@ function Planner({
   );
 }
 
-function Tasks({ data, userId, supabase, refresh, showToast }: CrudProps) {
+function Tasks({ data, userId, supabase, showToast, setTasks }: CrudProps & { setTasks: (updater: (tasks: Task[]) => Task[]) => void }) {
   const [filter, setFilter] = useState("active");
+  const [flashId, setFlashId] = useState<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const filtered = data.tasks.filter((task) => {
     if (filter === "all") return true;
     if (filter === "completed") return task.status === "done";
@@ -666,7 +657,7 @@ function Tasks({ data, userId, supabase, refresh, showToast }: CrudProps) {
     const deadlineDate = String(formData.get("deadline_date") || "");
     if (!title || !startDate || !deadlineDate) return showToast("Task title, start date, and deadline are required.");
     if (deadlineDate < startDate) return showToast("Deadline must be on or after start date.");
-    const { error } = await supabase.from("tasks").insert({
+    const { data: inserted, error } = await supabase.from("tasks").insert({
       user_id: userId,
       title,
       category_id: String(formData.get("category_id") || "") || null,
@@ -676,10 +667,17 @@ function Tasks({ data, userId, supabase, refresh, showToast }: CrudProps) {
       start_date: startDate,
       deadline_date: deadlineDate,
       notes: String(formData.get("notes") || ""),
-    });
+    }).select("*").single();
     if (error) return showToast(`Task create failed: ${error.message}`);
+    if (inserted) {
+      const newTask = inserted as Task;
+      setTasks((current) => [...current.filter((t) => t.id !== newTask.id), newTask]);
+      setFilter((newTask.status !== "done" || filter === "all") ? filter : "all");
+      setFlashId(newTask.id);
+      window.setTimeout(() => setFlashId((id) => (id === newTask.id ? null : id)), 1800);
+    }
+    formRef.current?.reset();
     showToast("Task created.");
-    await refresh();
   }
 
   async function updateTask(task: Task, patch: Partial<Task>) {
@@ -687,7 +685,7 @@ function Tasks({ data, userId, supabase, refresh, showToast }: CrudProps) {
     if (!next.title.trim()) return showToast("Task title is required.");
     if (!next.start_date || !next.deadline_date) return showToast("Start date and deadline are required.");
     if (next.deadline_date < next.start_date) return showToast("Deadline must be on or after start date.");
-    const { error } = await supabase
+    const { data: updated, error } = await supabase
       .from("tasks")
       .update({
         title: next.title,
@@ -697,25 +695,27 @@ function Tasks({ data, userId, supabase, refresh, showToast }: CrudProps) {
         deadline_date: next.deadline_date,
         notes: next.notes,
       })
-      .eq("id", task.id);
+      .eq("id", task.id)
+      .select("*")
+      .single();
     if (error) return showToast(`Task update failed: ${error.message}`);
+    if (updated) setTasks((current) => current.map((t) => (t.id === task.id ? (updated as Task) : t)));
     showToast("Task saved.");
-    await refresh();
   }
 
   async function deleteTask(task: Task) {
     if (!window.confirm(`Delete "${task.title}"? This also removes its scheduled plan/log rows.`)) return;
     const { error } = await supabase.from("tasks").delete().eq("id", task.id);
     if (error) return showToast(`Task delete failed: ${error.message}`);
+    setTasks((current) => current.filter((t) => t.id !== task.id));
     showToast("Task deleted.");
-    await refresh();
   }
 
   return (
     <div className="grid">
       <section className="panel">
         <div className="section-title"><h3>Create Task</h3><span>Start and deadline required</span></div>
-        <form action={createTask} className="task-form">
+        <form ref={formRef} action={createTask} className="task-form">
           <input name="title" placeholder="Task title" required />
           <select name="priority"><PriorityOptions /></select>
           <input name="start_date" type="date" defaultValue={todayIso()} required />
@@ -737,7 +737,7 @@ function Tasks({ data, userId, supabase, refresh, showToast }: CrudProps) {
           <table>
             <thead><tr><th>Task</th><th>Priority</th><th>Status</th><th>Start</th><th>Deadline</th><th>Notes</th><th>Actions</th></tr></thead>
             <tbody>{filtered.map((task) => (
-              <TaskEditRow key={task.id} task={task} updateTask={updateTask} deleteTask={deleteTask} />
+              <TaskEditRow key={task.id} task={task} updateTask={updateTask} deleteTask={deleteTask} flash={flashId === task.id} />
             ))}</tbody>
           </table>
         </div>
@@ -808,10 +808,12 @@ function TaskEditRow({
   task,
   updateTask,
   deleteTask,
+  flash,
 }: {
   task: Task;
   updateTask: (task: Task, patch: Partial<Task>) => Promise<void>;
   deleteTask: (task: Task) => Promise<void>;
+  flash?: boolean;
 }) {
   const [title, setTitle] = useState(task.title);
   const [priority, setPriority] = useState<Priority>(task.priority);
@@ -837,7 +839,7 @@ function TaskEditRow({
   }
 
   return (
-    <tr>
+    <tr className={flash ? "row-flash" : ""}>
       <td><input value={title} onChange={(event) => setTitle(event.target.value)} /></td>
       <td><select value={priority} onChange={(event) => setPriority(event.target.value as Priority)}><PriorityOptions /></select></td>
       <td>
@@ -858,6 +860,117 @@ function TaskEditRow({
         </div>
       </td>
     </tr>
+  );
+}
+
+function Notes({ data, userId, supabase, showToast, setNotes }: CrudProps & { setNotes: (updater: (notes: Note[]) => Note[]) => void }) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const [filter, setFilter] = useState<"open" | "done" | "all">("open");
+  const visible = data.notes.filter((note) => {
+    if (filter === "all") return true;
+    if (filter === "done") return note.done;
+    return !note.done;
+  });
+
+  async function createNote(formData: FormData) {
+    const body = String(formData.get("body") || "").trim();
+    if (!body) return showToast("Write something first.");
+    const { data: inserted, error } = await supabase.from("notes").insert({
+      user_id: userId,
+      body,
+      done: false,
+      sort_order: 0,
+    }).select("*").single();
+    if (error) return showToast(`Note create failed: ${error.message}`);
+    if (inserted) setNotes((current) => [inserted as Note, ...current]);
+    formRef.current?.reset();
+    showToast("Note added.");
+  }
+
+  async function toggleDone(note: Note) {
+    setNotes((current) => current.map((n) => (n.id === note.id ? { ...n, done: !note.done } : n)));
+    const { data: updated, error } = await supabase.from("notes").update({ done: !note.done }).eq("id", note.id).select("*").single();
+    if (error) {
+      setNotes((current) => current.map((n) => (n.id === note.id ? note : n)));
+      showToast(`Note update failed: ${error.message}`);
+      return;
+    }
+    if (updated) setNotes((current) => current.map((n) => (n.id === note.id ? (updated as Note) : n)));
+  }
+
+  async function updateBody(note: Note, body: string) {
+    if (body === note.body) return;
+    const { data: updated, error } = await supabase.from("notes").update({ body }).eq("id", note.id).select("*").single();
+    if (error) return showToast(`Note update failed: ${error.message}`);
+    if (updated) setNotes((current) => current.map((n) => (n.id === note.id ? (updated as Note) : n)));
+  }
+
+  async function deleteNote(note: Note) {
+    const { error } = await supabase.from("notes").delete().eq("id", note.id);
+    if (error) return showToast(`Note delete failed: ${error.message}`);
+    setNotes((current) => current.filter((n) => n.id !== note.id));
+  }
+
+  return (
+    <div className="grid">
+      <section className="panel">
+        <div className="section-title"><h3>Quick To-Do</h3><span>Standalone, not scheduled and not scored</span></div>
+        <form ref={formRef} action={createNote} className="inline-form">
+          <input name="body" placeholder="Write a to-do, hit Enter" autoComplete="off" required />
+          <button className="primary"><Plus size={17} aria-hidden="true" />Add</button>
+        </form>
+      </section>
+      <section className="panel">
+        <div className="section-title">
+          <h3>Notes ({visible.length})</h3>
+          <select value={filter} onChange={(event) => setFilter(event.target.value as "open" | "done" | "all")}>
+            <option value="open">Open</option>
+            <option value="done">Done</option>
+            <option value="all">All</option>
+          </select>
+        </div>
+        {visible.length === 0 ? (
+          <p className="muted">Nothing here yet. Add your first to-do above.</p>
+        ) : (
+          <ul className="notes-list">
+            {visible.map((note) => <NoteRow key={note.id} note={note} toggleDone={toggleDone} updateBody={updateBody} deleteNote={deleteNote} />)}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function NoteRow({
+  note,
+  toggleDone,
+  updateBody,
+  deleteNote,
+}: {
+  note: Note;
+  toggleDone: (note: Note) => Promise<void>;
+  updateBody: (note: Note, body: string) => Promise<void>;
+  deleteNote: (note: Note) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState(note.body);
+  useEffect(() => setDraft(note.body), [note.body]);
+  return (
+    <li className={`note-item ${note.done ? "done" : ""}`}>
+      <label className="note-check">
+        <input type="checkbox" checked={note.done} onChange={() => toggleDone(note)} />
+        <span />
+      </label>
+      <input
+        className="note-input"
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={() => updateBody(note, draft.trim())}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") (event.target as HTMLInputElement).blur();
+        }}
+      />
+      <button type="button" className="small-button danger-button" onClick={() => deleteNote(note)} aria-label="Delete note"><Trash2 size={15} aria-hidden="true" /></button>
+    </li>
   );
 }
 

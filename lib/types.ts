@@ -67,6 +67,16 @@ export type WeeklyNote = {
   body: string;
 };
 
+export type Note = {
+  id: string;
+  user_id: string;
+  body: string;
+  done: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export type AppData = {
   categories: Category[];
   items: Item[];
@@ -74,4 +84,5 @@ export type AppData = {
   plans: Plan[];
   logs: Log[];
   weeklyNotes: WeeklyNote[];
+  notes: Note[];
 };

@@ -903,3 +903,114 @@ button:disabled:hover {
     width: auto;
   }
 }
+
+/* Planner Day/Week toggle */
+.range-toggle {
+  display: inline-flex;
+  background: var(--surface-2, #1a2238);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 2px;
+}
+.range-toggle button {
+  background: transparent;
+  border: 0;
+  color: var(--muted, #94a3b8);
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.range-toggle button:hover {
+  color: #f8fafc;
+}
+.range-toggle button.active {
+  background: var(--accent, #21715d);
+  color: #f8fafc;
+}
+
+/* New-task row flash */
+@keyframes row-flash-anim {
+  0% { background: rgba(33, 113, 93, 0.35); }
+  100% { background: transparent; }
+}
+tr.row-flash > td {
+  animation: row-flash-anim 1.8s ease-out;
+}
+
+/* Notes tab */
+.notes-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.note-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--surface-2, #1a2238);
+  border-radius: 8px;
+  border: 1px solid transparent;
+  transition: border-color 0.15s;
+}
+.note-item:hover {
+  border-color: var(--surface-3, #2a3552);
+}
+.note-item.done .note-input {
+  text-decoration: line-through;
+  color: var(--muted, #94a3b8);
+}
+.note-check {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  position: relative;
+}
+.note-check input {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+.note-check span {
+  position: absolute;
+  inset: 0;
+  border: 1.5px solid var(--surface-3, #475569);
+  border-radius: 5px;
+  background: transparent;
+  pointer-events: none;
+  transition: background 0.15s, border-color 0.15s;
+}
+.note-check input:checked + span {
+  background: var(--accent, #21715d);
+  border-color: var(--accent, #21715d);
+}
+.note-check input:checked + span::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 1px;
+  width: 5px;
+  height: 10px;
+  border: solid #f8fafc;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.note-input {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font-size: 14px;
+  padding: 4px 0;
+  outline: none;
+}
+.note-input:focus {
+  border-bottom: 1px solid var(--accent, #21715d);
+}
