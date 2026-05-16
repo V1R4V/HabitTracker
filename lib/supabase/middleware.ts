@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { getSupabaseEnv } from "./env";
+import { getSupabaseEnv, hasSupabaseEnv } from "./env";
 
 type CookieToSet = {
   name: string;
@@ -10,6 +10,17 @@ type CookieToSet = {
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
+  const isAuthRoute = request.nextUrl.pathname.startsWith("/login") || request.nextUrl.pathname.startsWith("/auth");
+
+  if (!hasSupabaseEnv()) {
+    if (isAuthRoute) return supabaseResponse;
+
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    url.searchParams.set("error", "missing_supabase_env");
+    return NextResponse.redirect(url);
+  }
+
   const { url, key } = getSupabaseEnv();
 
   const supabase = createServerClient(
@@ -33,7 +44,6 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isAuthRoute = request.nextUrl.pathname.startsWith("/login") || request.nextUrl.pathname.startsWith("/auth");
   if (!user && !isAuthRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";

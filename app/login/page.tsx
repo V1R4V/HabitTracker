@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "../../lib/supabase/client";
 
 export default function LoginPage() {
@@ -10,11 +10,26 @@ export default function LoginPage() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("error") === "missing_supabase_env") {
+      setMessage("Deployment is missing Supabase environment variables. Add them in Vercel Project Settings and redeploy.");
+    }
+  }, []);
+
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
     setMessage("");
-    const supabase = createClient();
+    let supabase: ReturnType<typeof createClient>;
+
+    try {
+      supabase = createClient();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Supabase configuration is missing.");
+      setLoading(false);
+      return;
+    }
 
     const result =
       mode === "signin"
