@@ -1,6 +1,7 @@
 # Habit Command Center
 
-![alt text](image.png)
+<img width="1514" height="990" alt="image" src="https://github.com/user-attachments/assets/a8065eb5-8030-4e21-96e3-cccf860f2447" />
+
 
 
 Habit Command Center is a private planning and execution dashboard for turning weekly goals into daily action. It combines habit scheduling, task tracking, weighted scoring, extra work logging, and progress analytics in one focused Next.js app.
