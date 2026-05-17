@@ -705,8 +705,8 @@ function ChartLine({ rows }: { rows: TrendRow[] }) {
   const ticksByDate = new Map(rows.map((row) => [row.date, row.tick]));
   return (
     <div className="chart-box">
-      <ResponsiveContainer width="100%" height={220}>
-        <LineChart data={rows} margin={{ top: 10, right: 16, left: -10, bottom: 0 }}>
+      <ResponsiveContainer width="100%" height={170}>
+        <LineChart data={rows} margin={{ top: 6, right: 10, left: -18, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.18)" />
           <XAxis
             dataKey="date"
@@ -1546,9 +1546,9 @@ function ChartPie({ rows }: { rows: Array<{ name: string; value: number }> }) {
   if (!rows.length) return <p className="muted">No logged hours in this range yet.</p>;
   return (
     <div className="chart-box">
-      <ResponsiveContainer width="100%" height={260}>
+      <ResponsiveContainer width="100%" height={180}>
         <PieChart>
-          <Pie data={rows} dataKey="value" nameKey="name" outerRadius={100} label={{ fill: "#cbd5e1", fontSize: 12 }}>
+          <Pie data={rows} dataKey="value" nameKey="name" outerRadius={70} label={{ fill: "#cbd5e1", fontSize: 11 }}>
             {rows.map((_, index) => <Cell key={index} fill={colors[index % colors.length]} />)}
           </Pie>
           <Tooltip
