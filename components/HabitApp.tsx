@@ -253,6 +253,7 @@ export default function HabitApp({ userId, userEmail, initialDate }: { userId: s
 const RANGE_DAYS: Record<DashboardRange, number> = { week: 7, month: 30, quarter: 90, year: 365 };
 const RANGE_LABEL: Record<DashboardRange, string> = { week: "Week", month: "Month", quarter: "Quarter", year: "Year" };
 type DashboardRange = "week" | "month" | "quarter" | "year";
+type TrendRow = { date: string; tick: string; pct: number; tooltip: string };
 
 type PanelId = "trend" | "dow" | "perf" | "highlights" | "heatmap" | "hours" | "streaks" | "drivers" | "tasks";
 const DEFAULT_PANEL_ORDER: PanelId[] = ["trend", "dow", "perf", "highlights", "heatmap", "hours", "streaks", "drivers", "tasks"];
@@ -300,16 +301,17 @@ function Dashboard({
   const rangeHours = hoursByCategory(data, rangeDates);
   const trendData = useMemo(() => {
     const stride = range === "year" ? 7 : range === "quarter" ? 3 : 1;
-    const rows: Array<{ label: string; pct: number; tooltip: string }> = [];
+    const rows: TrendRow[] = [];
     for (let i = 0; i < rangeDates.length; i += stride) {
       const slice = rangeDates.slice(i, i + stride);
       const scored = slice.map((d) => scoreForDate(data, d)).filter((s) => s.possible > 0);
       const avg = scored.length ? Math.round(scored.reduce((sum, s) => sum + s.finalPercent, 0) / scored.length) : 0;
       const last = slice[slice.length - 1];
       rows.push({
-        label: stride === 1 ? last.slice(5) : `${slice[0].slice(5)}–${last.slice(5)}`,
+        date: last,
+        tick: formatTrendTick(last, range),
         pct: avg,
-        tooltip: formatDate(last),
+        tooltip: formatTrendTooltip(slice[0], last),
       });
     }
     return rows;
@@ -489,7 +491,7 @@ function Dashboard({
 
 type PanelCtx = {
   range: DashboardRange;
-  trendData: Array<{ label: string; pct: number; tooltip: string }>;
+  trendData: TrendRow[];
   dowAverages: ReturnType<typeof dayOfWeekAverages>;
   performance: ReturnType<typeof habitPerformance>;
   rangeBestDay: { best: { date: string; pct: number }; worst: { date: string; pct: number }; totalHours: number };
@@ -698,14 +700,20 @@ function renderPanel(id: PanelId, ctx: PanelCtx) {
   }
 }
 
-function ChartLine({ rows }: { rows: Array<{ label: string; pct: number; tooltip: string }> }) {
+function ChartLine({ rows }: { rows: TrendRow[] }) {
   if (!rows.length) return <p className="muted">No data in this range yet.</p>;
+  const ticksByDate = new Map(rows.map((row) => [row.date, row.tick]));
   return (
     <div className="chart-box">
       <ResponsiveContainer width="100%" height={220}>
         <LineChart data={rows} margin={{ top: 10, right: 16, left: -10, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.18)" />
-          <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#94a3b8" }} stroke="rgba(148,163,184,0.35)" />
+          <XAxis
+            dataKey="date"
+            tick={{ fontSize: 11, fill: "#94a3b8" }}
+            stroke="rgba(148,163,184,0.35)"
+            tickFormatter={(value) => ticksByDate.get(String(value)) || String(value)}
+          />
           <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#94a3b8" }} stroke="rgba(148,163,184,0.35)" />
           <Tooltip
             cursor={{ stroke: "rgba(94, 234, 212, 0.4)", strokeWidth: 1 }}
@@ -713,6 +721,10 @@ function ChartLine({ rows }: { rows: Array<{ label: string; pct: number; tooltip
             labelStyle={{ color: "#f8fafc", fontWeight: 600, fontSize: 12, marginBottom: 2 }}
             itemStyle={{ color: "#5eead4", fontSize: 12, padding: 0 }}
             formatter={(value: number) => [`${value}%`, "Grade"]}
+            labelFormatter={(_, payload) => {
+              const row = payload?.[0]?.payload as TrendRow | undefined;
+              return row?.tooltip || "";
+            }}
           />
           <Line type="monotone" dataKey="pct" stroke="#5eead4" strokeWidth={2.5} dot={{ r: 2, fill: "#5eead4" }} activeDot={{ r: 5, fill: "#5eead4", stroke: "#0f172a", strokeWidth: 2 }} />
         </LineChart>
@@ -1567,6 +1579,32 @@ function dayProgress(score: ReturnType<typeof scoreForDate>) {
   const complete = score.rows.filter((row) => row.status === "complete").length;
   const missed = score.rows.filter((row) => row.status === "missed").length;
   return { complete, missed, pending: score.pending, total: score.rows.length };
+}
+
+function formatTrendTick(iso: string, range: DashboardRange) {
+  const date = parseIso(iso);
+  const monthDay = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  if (range !== "year") return monthDay;
+  return `${date.toLocaleDateString("en-US", { month: "short" })} '${String(date.getFullYear()).slice(-2)}`;
+}
+
+function formatTrendTooltip(startIso: string, endIso: string) {
+  if (startIso === endIso) return formatDate(endIso);
+  const start = parseIso(startIso);
+  const end = parseIso(endIso);
+  const sameYear = start.getFullYear() === end.getFullYear();
+  const sameMonth = sameYear && start.getMonth() === end.getMonth();
+
+  if (sameMonth) {
+    const month = end.toLocaleDateString("en-US", { month: "short" });
+    return `${month} ${start.getDate()}-${end.getDate()}, ${end.getFullYear()}`;
+  }
+  if (sameYear) {
+    const first = start.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const last = end.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return `${first}-${last}, ${end.getFullYear()}`;
+  }
+  return `${formatDate(startIso)}-${formatDate(endIso)}`;
 }
 
 function isItem(entity: Item | Task): entity is Item {

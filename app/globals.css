@@ -1303,19 +1303,24 @@ tr.row-flash > td {
   gap: 6px;
 }
 .dashboard-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 14px;
-  grid-auto-flow: dense;
+  column-count: 2;
+  column-gap: 14px;
 }
 .panel-wrap {
   position: relative;
-  min-width: 0;
+  display: block;
+  width: 100%;
+  margin: 0 0 14px;
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  page-break-inside: avoid;
   transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
 }
-.panel-wrap.span-2 {
-  grid-column: 1 / -1;
+.panel-wrap > .panel {
+  margin: 0;
 }
+/* span-2 is a no-op in column layout — cards just take their natural width.
+   Wrappers stay span-1 visually, content reflows as the user reorders. */
 .panel-wrap[draggable="true"] {
   cursor: grab;
 }
@@ -1346,9 +1351,6 @@ tr.row-flash > td {
 }
 @media (max-width: 880px) {
   .dashboard-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .panel-wrap.span-2 {
-    grid-column: auto;
+    column-count: 1;
   }
 }
