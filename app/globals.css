@@ -1306,8 +1306,16 @@ tr.row-flash > td {
   align-items: center;
   gap: 6px;
 }
+/* Dashboard is masonry-style. Cards take natural height, page scrolls
+   vertically. Crucially, nothing inside a card forces horizontal overflow. */
+.dashboard-fit {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
 .dashboard-grid {
-  column-count: 3;
+  column-count: 2;
   column-gap: 12px;
 }
 .panel-wrap {
@@ -1322,38 +1330,32 @@ tr.row-flash > td {
 }
 .panel-wrap > .panel {
   margin: 0;
-  padding: 12px;
+  padding: 14px;
 }
 .panel-wrap .section-title {
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
-.panel-wrap .section-title h3 {
-  font-size: 14px;
-}
-/* Tall content inside dashboard cards scrolls internally instead of stretching the card */
-.panel-wrap .perf-list {
-  max-height: 220px;
-  overflow-y: auto;
-  padding-right: 4px;
+/* Critical: dashboard panels never trigger horizontal page scroll.
+   Tables inside cards use natural width, not the 780px global min-width. */
+.panel-wrap table {
+  min-width: 0;
+  width: 100%;
 }
 .panel-wrap .table-wrap {
-  max-height: 240px;
-  overflow-y: auto;
+  overflow: visible;
+  border: 0;
+  background: transparent;
 }
-.panel-wrap .heatmap {
-  gap: 4px;
+.panel-wrap th,
+.panel-wrap td {
+  white-space: nowrap;
 }
-.panel-wrap .heat-cell {
-  padding: 6px 4px;
-  min-height: 44px;
+.panel-wrap .perf-row {
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 2fr) 48px;
 }
-.panel-wrap .chart-box {
-  height: 180px;
+.panel-wrap .perf-meta strong {
+  font-size: 13px;
 }
-.panel-wrap .chart-box .recharts-responsive-container {
-  height: 180px !important;
-}
-/* span-2 is a no-op in column layout */
 .panel-wrap[draggable="true"] {
   cursor: grab;
 }
@@ -1381,11 +1383,6 @@ tr.row-flash > td {
 }
 .panel-wrap:hover .drag-handle {
   opacity: 0.55;
-}
-@media (max-width: 1280px) {
-  .dashboard-grid {
-    column-count: 2;
-  }
 }
 @media (max-width: 760px) {
   .dashboard-grid {

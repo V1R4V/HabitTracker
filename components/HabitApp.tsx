@@ -398,7 +398,7 @@ function Dashboard({
   const velocity = (completedInRange / weeksInRange).toFixed(1);
 
   return (
-    <div className="grid">
+    <div className="grid dashboard-fit">
       <section className="today-brief panel">
         <div>
           <p className="eyebrow">Selected day</p>
