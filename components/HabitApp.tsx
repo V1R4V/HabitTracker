@@ -18,10 +18,10 @@ import {
   Trash2,
 } from "lucide-react";
 import {
-  Bar,
-  BarChart,
   CartesianGrid,
   Cell,
+  Line,
+  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -30,7 +30,7 @@ import {
   YAxis,
 } from "recharts";
 import { addDays, dateRange, dayName, formatDate, monthDates, startOfWeek, todayIso } from "../lib/date";
-import { aggregateScores, priorityWeights, scoreForDate } from "../lib/scoring";
+import { aggregateScores, dayOfWeekAverages, priorityWeights, scoreForDate, streaksForItem } from "../lib/scoring";
 import { buildSeed, itemSeeds, planSeeds, taskSeeds } from "../lib/seed";
 import { createClient } from "../lib/supabase/client";
 import type { AppData, Category, Item, Log, LogStatus, Note, Plan, Priority, Task, TaskStatus, TrackingType, WeeklyNote } from "../lib/types";
@@ -66,6 +66,7 @@ export default function HabitApp({ userId, userEmail, initialDate }: { userId: s
   const [theme, setTheme] = useState("dark");
   const [hydrated, setHydrated] = useState(false);
   const showDateTools = view !== "settings" && view !== "notes";
+  const topbarEyebrow = showDateTools ? formatDate(activeDate) : view === "notes" ? "Personal list" : "Configuration";
 
   useEffect(() => {
     const saved = window.localStorage.getItem("hcc-theme");
@@ -190,10 +191,6 @@ export default function HabitApp({ userId, userEmail, initialDate }: { userId: s
   }
 
   const week = dateRange(startOfWeek(activeDate), 7);
-  const month = monthDates(activeDate);
-  const dayScore = scoreForDate(data, activeDate);
-  const weekScore = aggregateScores(data, week);
-  const monthScore = aggregateScores(data, month);
 
   async function signOut() {
     await supabase.auth.signOut();
@@ -233,13 +230,13 @@ export default function HabitApp({ userId, userEmail, initialDate }: { userId: s
       <main className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">{showDateTools ? formatDate(activeDate) : "Configuration"}</p>
+            <p className="eyebrow">{topbarEyebrow}</p>
             <h2>{view[0].toUpperCase() + view.slice(1)}</h2>
           </div>
           {showDateTools ? <DateNavigator activeDate={activeDate} view={view} setActiveDate={setActiveDate} /> : null}
         </header>
         {loading ? <div className="panel">Loading private tracker data...</div> : null}
-        {!loading && view === "dashboard" ? <Dashboard data={data} activeDate={activeDate} month={month} week={week} dayScore={dayScore} weekScore={weekScore} monthScore={monthScore} setActiveDate={setActiveDate} setView={setView} /> : null}
+        {!loading && view === "dashboard" ? <Dashboard data={data} activeDate={activeDate} setActiveDate={setActiveDate} setView={setView} /> : null}
         {!loading && view === "today" ? <Today data={data} activeDate={activeDate} userId={userId} supabase={supabase} refresh={refetch} showToast={showToast} setLogs={setLogs} /> : null}
         {!loading && view === "planner" ? <Planner data={data} week={week} activeDate={activeDate} userId={userId} supabase={supabase} refresh={refetch} showToast={showToast} setPlans={setPlans} setWeeklyNotes={setWeeklyNotes} /> : null}
         {!loading && view === "tasks" ? <Tasks data={data} userId={userId} supabase={supabase} refresh={refetch} showToast={showToast} setTasks={setTasks} /> : null}
@@ -251,34 +248,72 @@ export default function HabitApp({ userId, userEmail, initialDate }: { userId: s
   );
 }
 
+const RANGE_DAYS: Record<DashboardRange, number> = { week: 7, month: 30, quarter: 90, year: 365 };
+const RANGE_LABEL: Record<DashboardRange, string> = { week: "Week", month: "Month", quarter: "Quarter", year: "Year" };
+type DashboardRange = "week" | "month" | "quarter" | "year";
+
 function Dashboard({
   data,
   activeDate,
-  month,
-  week,
-  dayScore,
-  weekScore,
-  monthScore,
   setActiveDate,
   setView,
 }: {
   data: AppData;
   activeDate: string;
-  month: string[];
-  week: string[];
-  dayScore: ReturnType<typeof scoreForDate>;
-  weekScore: ReturnType<typeof aggregateScores>;
-  monthScore: ReturnType<typeof aggregateScores>;
   setActiveDate: (date: string) => void;
   setView: (view: string) => void;
 }) {
-  const monthHours = hoursByCategory(data, month);
-  const weekHours = hoursByCategory(data, week);
-  const today = dayProgress(dayScore);
-  const activeTasks = data.tasks.filter((task) => task.status !== "done" && task.start_date <= activeDate && task.deadline_date >= activeDate);
-  const completedTasks = data.tasks.filter((task) => task.status === "done" && task.start_date <= activeDate && task.deadline_date >= activeDate);
-  const overdue = data.tasks.filter((task) => task.status !== "done" && task.deadline_date < todayIso()).length;
-  const dueSoon = data.tasks.filter((task) => task.status !== "done" && task.deadline_date >= todayIso() && task.deadline_date <= addDays(todayIso(), 7)).length;
+  const [range, setRange] = useState<DashboardRange>(() => {
+    if (typeof window === "undefined") return "month";
+    return (window.localStorage.getItem("hcc-dashboard-range") as DashboardRange) || "month";
+  });
+  useEffect(() => {
+    window.localStorage.setItem("hcc-dashboard-range", range);
+  }, [range]);
+
+  const today = todayIso();
+  const rangeDates = useMemo(() => {
+    const days = RANGE_DAYS[range];
+    return Array.from({ length: days }, (_, idx) => addDays(today, -(days - 1 - idx)));
+  }, [range, today]);
+
+  const month = monthDates(activeDate);
+  const dayScore = scoreForDate(data, activeDate);
+  const rangeScore = aggregateScores(data, rangeDates);
+  const dayProg = dayProgress(dayScore);
+
+  const rangeHours = hoursByCategory(data, rangeDates);
+  const trendData = useMemo(() => {
+    const stride = range === "year" ? 7 : range === "quarter" ? 3 : 1;
+    const rows: Array<{ label: string; pct: number; tooltip: string }> = [];
+    for (let i = 0; i < rangeDates.length; i += stride) {
+      const slice = rangeDates.slice(i, i + stride);
+      const scored = slice.map((d) => scoreForDate(data, d)).filter((s) => s.possible > 0);
+      const avg = scored.length ? Math.round(scored.reduce((sum, s) => sum + s.finalPercent, 0) / scored.length) : 0;
+      const last = slice[slice.length - 1];
+      rows.push({
+        label: stride === 1 ? last.slice(5) : `${slice[0].slice(5)}–${last.slice(5)}`,
+        pct: avg,
+        tooltip: formatDate(last),
+      });
+    }
+    return rows;
+  }, [data, rangeDates, range]);
+
+  const dowAverages = useMemo(() => dayOfWeekAverages(data, rangeDates), [data, rangeDates]);
+
+  const habitStreaks = useMemo(() => {
+    return data.items
+      .filter((item) => item.active)
+      .map((item) => ({ item, ...streaksForItem(data, item.id, today) }))
+      .sort((a, b) => b.current - a.current || b.longest - a.longest);
+  }, [data, today]);
+
+  const overdue = data.tasks.filter((task) => task.status !== "done" && task.deadline_date < today);
+  const dueSoon = data.tasks.filter((task) => task.status !== "done" && task.deadline_date >= today && task.deadline_date <= addDays(today, 7));
+  const completedInRange = data.tasks.filter((task) => task.status === "done" && task.deadline_date >= rangeDates[0] && task.deadline_date <= today).length;
+  const weeksInRange = Math.max(1, Math.round(rangeDates.length / 7));
+  const velocity = (completedInRange / weeksInRange).toFixed(1);
 
   return (
     <div className="grid">
@@ -289,23 +324,47 @@ function Dashboard({
         </div>
         <div className="brief-stat">
           <span>Scheduled work</span>
-          <strong>{today.complete}/{today.total}</strong>
-          <small>{today.pending} pending, {today.missed} missed</small>
+          <strong>{dayProg.complete}/{dayProg.total}</strong>
+          <small>{dayProg.pending} pending, {dayProg.missed} missed</small>
         </div>
         <div className="brief-stat">
           <span>Active tasks</span>
-          <strong>{completedTasks.length}/{completedTasks.length + activeTasks.length}</strong>
-          <small>{activeTasks.length} still open</small>
+          <strong>{data.tasks.filter((t) => t.status === "done").length}/{data.tasks.length}</strong>
+          <small>{overdue.length} overdue, {dueSoon.length} due soon</small>
         </div>
-        <button type="button" className="primary" onClick={() => setView("today")}>
-          <CheckSquare size={17} aria-hidden="true" />Log today
-        </button>
+        <div className="brief-actions">
+          <div className="range-toggle" role="tablist" aria-label="Dashboard range">
+            {(Object.keys(RANGE_DAYS) as DashboardRange[]).map((key) => (
+              <button key={key} type="button" role="tab" aria-selected={range === key} className={range === key ? "active" : ""} onClick={() => setRange(key)}>{RANGE_LABEL[key]}</button>
+            ))}
+          </div>
+          <button type="button" className="primary" onClick={() => setView("today")}>
+            <CheckSquare size={17} aria-hidden="true" />Log today
+          </button>
+        </div>
       </section>
       <div className="metric-grid">
         <Metric label="Day grade" value={`${dayScore.finalPercent}%`} detail={dayScore.letter} pct={dayScore.finalPercent} />
-        <Metric label="Week grade" value={`${weekScore.avg}%`} detail={weekScore.letter} pct={weekScore.avg} />
-        <Metric label="Month grade" value={`${monthScore.avg}%`} detail={monthScore.letter} pct={monthScore.avg} />
-        <Metric label="Task risk" value={`${overdue}/${dueSoon}`} detail="overdue / due soon" pct={Math.min(100, overdue * 35 + dueSoon * 12)} />
+        <Metric label={`${RANGE_LABEL[range]} grade`} value={`${rangeScore.avg}%`} detail={`${rangeScore.letter} · ${rangeScore.count} scored days`} pct={rangeScore.avg} />
+        <Metric label="Task velocity" value={`${velocity}`} detail={`per week · ${completedInRange} done in ${RANGE_LABEL[range].toLowerCase()}`} pct={Math.min(100, Number(velocity) * 20)} />
+        <Metric label="Task risk" value={`${overdue.length}/${dueSoon.length}`} detail="overdue / due soon" pct={Math.min(100, overdue.length * 35 + dueSoon.length * 12)} />
+      </div>
+      <div className="two-col">
+        <section className="panel">
+          <div className="section-title"><h3>Grade Trend</h3><span>Last {RANGE_DAYS[range]} days</span></div>
+          <ChartLine rows={trendData} />
+        </section>
+        <section className="panel">
+          <div className="section-title"><h3>Day of Week</h3><span>Average grade</span></div>
+          <div className="dow-grid">
+            {dowAverages.map((bucket) => (
+              <div key={bucket.label} className="dow-cell" style={{ "--heat": heatColor(bucket.avg, bucket.count ? 1 : 0), "--heat-ink": bucket.count ? "#f8fafc" : "var(--muted)" } as CSSProperties}>
+                <strong>{bucket.label}</strong>
+                <span>{bucket.count ? `${bucket.avg}%` : "—"}</span>
+              </div>
+            ))}
+          </div>
+        </section>
       </div>
       <div className="two-col">
         <section className="panel">
@@ -332,14 +391,28 @@ function Dashboard({
           </div>
         </section>
         <section className="panel">
-          <div className="section-title"><h3>Hours by Category</h3><span>This month</span></div>
-          <ChartPie rows={monthHours} />
+          <div className="section-title"><h3>Hours by Category</h3><span>{RANGE_LABEL[range]}</span></div>
+          <ChartPie rows={rangeHours} />
         </section>
       </div>
       <div className="two-col">
         <section className="panel">
-          <div className="section-title"><h3>Weekly Hours</h3><span>{formatDate(week[0])} - {formatDate(week[6])}</span></div>
-          <ChartBars rows={weekHours} />
+          <div className="section-title"><h3>Streaks</h3><span>Current · longest</span></div>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Habit</th><th>Current</th><th>Longest</th></tr></thead>
+              <tbody>
+                {habitStreaks.map(({ item, current, longest }) => (
+                  <tr key={item.id}>
+                    <td>{item.name}</td>
+                    <td><span className={`streak-pill ${current >= 7 ? "hot" : current > 0 ? "warm" : ""}`}>{current}{current > 0 ? " 🔥" : ""}</span></td>
+                    <td>{longest}</td>
+                  </tr>
+                ))}
+                {habitStreaks.length === 0 ? <tr><td colSpan={3} className="muted">No active habits yet.</td></tr> : null}
+              </tbody>
+            </table>
+          </div>
         </section>
         <section className="panel">
           <div className="section-title"><h3>Score Drivers</h3><span>Selected day</span></div>
@@ -360,6 +433,48 @@ function Dashboard({
           </div>
         </section>
       </div>
+      <section className="panel">
+        <div className="section-title"><h3>Task Watch</h3><span>{overdue.length + dueSoon.length} need attention</span></div>
+        {overdue.length === 0 && dueSoon.length === 0 ? (
+          <p className="muted">All clear. No overdue or due-soon tasks.</p>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Task</th><th>Priority</th><th>Status</th><th>Deadline</th></tr></thead>
+              <tbody>
+                {[...overdue, ...dueSoon].map((task) => {
+                  const isOverdue = task.deadline_date < today;
+                  return (
+                    <tr key={task.id}>
+                      <td>{task.title}</td>
+                      <td><span className={`pill prio-${task.priority}`}>{task.priority}</span></td>
+                      <td><span className={`pill ${isOverdue ? "missed" : "pending"}`}>{isOverdue ? "Overdue" : "Due soon"}</span></td>
+                      <td>{formatDate(task.deadline_date)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function ChartLine({ rows }: { rows: Array<{ label: string; pct: number; tooltip: string }> }) {
+  if (!rows.length) return <p className="muted">No data in this range yet.</p>;
+  return (
+    <div className="chart-box">
+      <ResponsiveContainer width="100%" height={220}>
+        <LineChart data={rows} margin={{ top: 10, right: 16, left: -10, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+          <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+          <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
+          <Tooltip />
+          <Line type="monotone" dataKey="pct" stroke="#21715d" strokeWidth={2} dot={{ r: 2 }} />
+        </LineChart>
+      </ResponsiveContainer>
     </div>
   );
 }
@@ -866,11 +981,17 @@ function TaskEditRow({
 function Notes({ data, userId, supabase, showToast, setNotes }: CrudProps & { setNotes: (updater: (notes: Note[]) => Note[]) => void }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [filter, setFilter] = useState<"open" | "done" | "all">("open");
+  const openNotes = data.notes.filter((note) => !note.done);
+  const doneNotes = data.notes.filter((note) => note.done);
   const visible = data.notes.filter((note) => {
     if (filter === "all") return true;
     if (filter === "done") return note.done;
     return !note.done;
   });
+  const listTitle = filter === "open" ? "Open to-dos" : filter === "done" ? "Done" : "All to-dos";
+  const emptyMessage = filter === "done"
+    ? "Completed personal to-dos will show up here."
+    : "No personal to-dos here yet. Add one above when something small comes up.";
 
   async function createNote(formData: FormData) {
     const body = String(formData.get("body") || "").trim();
@@ -883,8 +1004,9 @@ function Notes({ data, userId, supabase, showToast, setNotes }: CrudProps & { se
     }).select("*").single();
     if (error) return showToast(`Note create failed: ${error.message}`);
     if (inserted) setNotes((current) => [inserted as Note, ...current]);
+    setFilter("open");
     formRef.current?.reset();
-    showToast("Note added.");
+    showToast("To-do added.");
   }
 
   async function toggleDone(note: Note) {
@@ -899,8 +1021,10 @@ function Notes({ data, userId, supabase, showToast, setNotes }: CrudProps & { se
   }
 
   async function updateBody(note: Note, body: string) {
-    if (body === note.body) return;
-    const { data: updated, error } = await supabase.from("notes").update({ body }).eq("id", note.id).select("*").single();
+    const nextBody = body.trim();
+    if (!nextBody) return showToast("To-do cannot be empty.");
+    if (nextBody === note.body) return;
+    const { data: updated, error } = await supabase.from("notes").update({ body: nextBody }).eq("id", note.id).select("*").single();
     if (error) return showToast(`Note update failed: ${error.message}`);
     if (updated) setNotes((current) => current.map((n) => (n.id === note.id ? (updated as Note) : n)));
   }
@@ -912,25 +1036,36 @@ function Notes({ data, userId, supabase, showToast, setNotes }: CrudProps & { se
   }
 
   return (
-    <div className="grid">
-      <section className="panel">
-        <div className="section-title"><h3>Quick To-Do</h3><span>Standalone, not scheduled and not scored</span></div>
-        <form ref={formRef} action={createNote} className="inline-form">
-          <input name="body" placeholder="Write a to-do, hit Enter" autoComplete="off" required />
+    <div className="notes-page">
+      <section className="panel notes-hero">
+        <div className="notes-copy">
+          <p className="eyebrow">Quick capture</p>
+          <h3>Personal to-dos that do not need a schedule</h3>
+          <p className="muted">Use this for laundry, groceries, errands, calls, and other small things. Habits live in Settings and Planner; deadline work belongs in Tasks.</p>
+        </div>
+        <div className="notes-stats" aria-label="Personal to-do totals">
+          <div><strong>{openNotes.length}</strong><span>open</span></div>
+          <div><strong>{doneNotes.length}</strong><span>done</span></div>
+        </div>
+        <form ref={formRef} action={createNote} className="note-capture">
+          <input name="body" placeholder="Laundry, groceries, call landlord..." autoComplete="off" required />
           <button className="primary"><Plus size={17} aria-hidden="true" />Add</button>
         </form>
       </section>
       <section className="panel">
         <div className="section-title">
-          <h3>Notes ({visible.length})</h3>
-          <select value={filter} onChange={(event) => setFilter(event.target.value as "open" | "done" | "all")}>
-            <option value="open">Open</option>
-            <option value="done">Done</option>
-            <option value="all">All</option>
-          </select>
+          <h3>{listTitle} ({visible.length})</h3>
+          <div className="range-toggle" role="tablist" aria-label="To-do filter">
+            <button type="button" role="tab" aria-selected={filter === "open"} className={filter === "open" ? "active" : ""} onClick={() => setFilter("open")}>Open</button>
+            <button type="button" role="tab" aria-selected={filter === "done"} className={filter === "done" ? "active" : ""} onClick={() => setFilter("done")}>Done</button>
+            <button type="button" role="tab" aria-selected={filter === "all"} className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>All</button>
+          </div>
         </div>
         {visible.length === 0 ? (
-          <p className="muted">Nothing here yet. Add your first to-do above.</p>
+          <div className="notes-empty">
+            <strong>No items</strong>
+            <p className="muted">{emptyMessage}</p>
+          </div>
         ) : (
           <ul className="notes-list">
             {visible.map((note) => <NoteRow key={note.id} note={note} toggleDone={toggleDone} updateBody={updateBody} deleteNote={deleteNote} />)}
@@ -954,6 +1089,16 @@ function NoteRow({
 }) {
   const [draft, setDraft] = useState(note.body);
   useEffect(() => setDraft(note.body), [note.body]);
+
+  function saveDraft() {
+    const next = draft.trim();
+    if (!next) {
+      setDraft(note.body);
+      return;
+    }
+    void updateBody(note, next);
+  }
+
   return (
     <li className={`note-item ${note.done ? "done" : ""}`}>
       <label className="note-check">
@@ -964,9 +1109,13 @@ function NoteRow({
         className="note-input"
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
-        onBlur={() => updateBody(note, draft.trim())}
+        onBlur={saveDraft}
         onKeyDown={(event) => {
           if (event.key === "Enter") (event.target as HTMLInputElement).blur();
+          if (event.key === "Escape") {
+            setDraft(note.body);
+            (event.target as HTMLInputElement).blur();
+          }
         }}
       />
       <button type="button" className="small-button danger-button" onClick={() => deleteNote(note)} aria-label="Delete note"><Trash2 size={15} aria-hidden="true" /></button>
@@ -1142,11 +1291,6 @@ function PriorityOptions() {
 function ChartPie({ rows }: { rows: Array<{ name: string; value: number }> }) {
   if (!rows.length) return <p className="muted">No logged hours in this range yet.</p>;
   return <div className="chart-box"><ResponsiveContainer width="100%" height={260}><PieChart><Pie data={rows} dataKey="value" nameKey="name" outerRadius={100} label>{rows.map((_, index) => <Cell key={index} fill={colors[index % colors.length]} />)}</Pie><Tooltip /></PieChart></ResponsiveContainer></div>;
-}
-
-function ChartBars({ rows }: { rows: Array<{ name: string; value: number }> }) {
-  if (!rows.length) return <p className="muted">No logged hours in this range yet.</p>;
-  return <div className="chart-box"><ResponsiveContainer width="100%" height={260}><BarChart data={rows}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Bar dataKey="value" fill="#315f9a" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div>;
 }
 
 function hoursByCategory(data: AppData, dates: string[]) {

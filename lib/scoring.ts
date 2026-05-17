@@ -108,3 +108,62 @@ export function aggregateScores(data: AppData, dates: string[]) {
   const avg = scored.length ? Math.round(scored.reduce((sum, score) => sum + score.finalPercent, 0) / scored.length) : 0;
   return { avg, letter: letterGrade(avg), count: scored.length };
 }
+
+// Per-habit streaks. A "hit" day is one where the habit was scheduled AND
+// the log for that day has status === "complete". Today never breaks a streak
+// even if it hasn't been logged yet.
+export function streaksForItem(data: AppData, itemId: string, today: string) {
+  const scheduledDates = new Set(
+    data.plans
+      .filter((plan) => plan.scheduled && plan.item_id === itemId)
+      .map((plan) => plan.date),
+  );
+  if (scheduledDates.size === 0) return { current: 0, longest: 0 };
+  const logsByDate = new Map<string, boolean>();
+  data.logs
+    .filter((log) => log.item_id === itemId && !log.is_extra)
+    .forEach((log) => logsByDate.set(log.date, log.status === "complete"));
+
+  const sortedDates = [...scheduledDates].sort();
+  let longest = 0;
+  let run = 0;
+  for (const date of sortedDates) {
+    const hit = logsByDate.get(date) === true;
+    if (hit) {
+      run += 1;
+      if (run > longest) longest = run;
+    } else if (date < today) {
+      run = 0;
+    }
+  }
+
+  let current = 0;
+  for (let i = sortedDates.length - 1; i >= 0; i -= 1) {
+    const date = sortedDates[i];
+    if (date > today) continue;
+    const hit = logsByDate.get(date) === true;
+    if (hit) current += 1;
+    else if (date < today) break;
+  }
+  return { current, longest };
+}
+
+const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+export function dayOfWeekAverages(data: AppData, dates: string[]) {
+  const buckets: Array<{ total: number; count: number }> = Array.from({ length: 7 }, () => ({ total: 0, count: 0 }));
+  dates.forEach((date) => {
+    const score = scoreForDate(data, date);
+    if (score.possible === 0) return;
+    const dow = new Date(`${date}T00:00:00`).getDay();
+    buckets[dow].total += score.finalPercent;
+    buckets[dow].count += 1;
+  });
+  // Reorder Mon..Sun for display.
+  const order = [1, 2, 3, 4, 5, 6, 0];
+  return order.map((dow) => ({
+    label: dayLabels[dow],
+    avg: buckets[dow].count ? Math.round(buckets[dow].total / buckets[dow].count) : 0,
+    count: buckets[dow].count,
+  }));
+}
