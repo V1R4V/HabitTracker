@@ -944,7 +944,6 @@ tr.row-flash > td {
 .notes-page {
   display: grid;
   gap: 14px;
-  max-width: 980px;
 }
 
 .notes-hero {
@@ -1193,4 +1192,98 @@ tr.row-flash > td {
   gap: 20px;
   align-items: center;
   justify-content: space-between;
+}
+
+/* Heatmap month navigation */
+.month-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.month-nav strong {
+  min-width: 110px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Habit performance bars */
+.perf-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.perf-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.2fr) minmax(0, 2fr) 56px;
+  align-items: center;
+  gap: 12px;
+}
+.perf-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.perf-meta strong {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.perf-meta .muted {
+  font-size: 11px;
+}
+.perf-bar {
+  height: 10px;
+  background: var(--surface-3, #1f2937);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.perf-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.25s ease-out;
+}
+.perf-pct {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 13px;
+  text-align: right;
+}
+
+/* Range highlights mini-grid */
+.highlight-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.highlight-cell {
+  background: var(--surface-2, #1a2238);
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.highlight-cell span {
+  color: var(--muted, #94a3b8);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.highlight-cell strong {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.highlight-cell small {
+  color: var(--muted, #94a3b8);
+  font-size: 12px;
 }

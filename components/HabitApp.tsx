@@ -29,8 +29,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { addDays, dateRange, dayName, formatDate, monthDates, startOfWeek, todayIso } from "../lib/date";
-import { aggregateScores, dayOfWeekAverages, priorityWeights, scoreForDate, streaksForItem } from "../lib/scoring";
+import { addDays, dateRange, dayName, formatDate, monthDates, parseIso, startOfWeek, todayIso, toIsoDate } from "../lib/date";
+import { aggregateScores, bestStreakInRange, dayOfWeekAverages, habitPerformance, priorityWeights, scoreForDate, streaksForItem } from "../lib/scoring";
 import { buildSeed, itemSeeds, planSeeds, taskSeeds } from "../lib/seed";
 import { createClient } from "../lib/supabase/client";
 import type { AppData, Category, Item, Log, LogStatus, Note, Plan, Priority, Task, TaskStatus, TrackingType, WeeklyNote } from "../lib/types";
@@ -277,7 +277,14 @@ function Dashboard({
     return Array.from({ length: days }, (_, idx) => addDays(today, -(days - 1 - idx)));
   }, [range, today]);
 
-  const month = monthDates(activeDate);
+  const [heatmapAnchor, setHeatmapAnchor] = useState(`${activeDate.slice(0, 7)}-01`);
+  const month = useMemo(() => monthDates(heatmapAnchor), [heatmapAnchor]);
+  const heatmapLabel = parseIso(heatmapAnchor).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  function shiftHeatmap(direction: -1 | 1) {
+    const next = new Date(parseIso(heatmapAnchor));
+    next.setMonth(next.getMonth() + direction);
+    setHeatmapAnchor(toIsoDate(next).slice(0, 7) + "-01");
+  }
   const dayScore = scoreForDate(data, activeDate);
   const rangeScore = aggregateScores(data, rangeDates);
   const dayProg = dayProgress(dayScore);
@@ -305,9 +312,36 @@ function Dashboard({
   const habitStreaks = useMemo(() => {
     return data.items
       .filter((item) => item.active)
-      .map((item) => ({ item, ...streaksForItem(data, item.id, today) }))
+      .map((item) => ({
+        item,
+        ...streaksForItem(data, item.id, today),
+        rangeBest: bestStreakInRange(data, item.id, rangeDates),
+      }))
       .sort((a, b) => b.current - a.current || b.longest - a.longest);
-  }, [data, today]);
+  }, [data, today, rangeDates]);
+
+  const performance = useMemo(() => habitPerformance(data, rangeDates), [data, rangeDates]);
+
+  const rangeBestDay = useMemo(() => {
+    let best = { date: "", pct: -1 };
+    let worst = { date: "", pct: 101 };
+    let totalHours = 0;
+    for (const d of rangeDates) {
+      const s = scoreForDate(data, d);
+      if (s.possible > 0) {
+        if (s.finalPercent > best.pct) best = { date: d, pct: s.finalPercent };
+        if (s.finalPercent < worst.pct) worst = { date: d, pct: s.finalPercent };
+      }
+      totalHours += data.logs
+        .filter((log) => log.date === d)
+        .reduce((sum, log) => {
+          const item = data.items.find((i) => i.id === log.item_id);
+          if (item?.tracking_type === "hours") return sum + Number(log.actual_value || 0);
+          return sum;
+        }, 0);
+    }
+    return { best, worst, totalHours: Math.round(totalHours * 10) / 10 };
+  }, [data, rangeDates]);
 
   const overdue = data.tasks.filter((task) => task.status !== "done" && task.deadline_date < today);
   const dueSoon = data.tasks.filter((task) => task.status !== "done" && task.deadline_date >= today && task.deadline_date <= addDays(today, 7));
@@ -368,7 +402,62 @@ function Dashboard({
       </div>
       <div className="two-col">
         <section className="panel">
-          <div className="section-title"><h3>Calendar Heatmap</h3><span>{activeDate.slice(0, 7)}</span></div>
+          <div className="section-title"><h3>Habit Performance</h3><span>Completion % over {RANGE_LABEL[range].toLowerCase()}</span></div>
+          {performance.length === 0 ? (
+            <p className="muted">No scheduled habits in this range yet.</p>
+          ) : (
+            <ul className="perf-list">
+              {performance.map(({ item, percent, completed, scheduled }) => (
+                <li key={item.id} className="perf-row">
+                  <div className="perf-meta">
+                    <strong>{item.name}</strong>
+                    <span className="muted">{completed}/{scheduled}</span>
+                  </div>
+                  <div className="perf-bar">
+                    <div className="perf-fill" style={{ width: `${percent}%`, background: heatColor(percent, 1) }} />
+                  </div>
+                  <span className="perf-pct">{percent}%</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+        <section className="panel">
+          <div className="section-title"><h3>Range Highlights</h3><span>{RANGE_LABEL[range]} snapshot</span></div>
+          <div className="highlight-grid">
+            <div className="highlight-cell">
+              <span>Best day</span>
+              <strong>{rangeBestDay.best.date ? `${rangeBestDay.best.pct}%` : "—"}</strong>
+              <small>{rangeBestDay.best.date ? formatDate(rangeBestDay.best.date) : "No scored days"}</small>
+            </div>
+            <div className="highlight-cell">
+              <span>Worst day</span>
+              <strong>{rangeBestDay.worst.date ? `${rangeBestDay.worst.pct}%` : "—"}</strong>
+              <small>{rangeBestDay.worst.date ? formatDate(rangeBestDay.worst.date) : "No scored days"}</small>
+            </div>
+            <div className="highlight-cell">
+              <span>Total hours</span>
+              <strong>{rangeBestDay.totalHours}</strong>
+              <small>logged in {RANGE_LABEL[range].toLowerCase()}</small>
+            </div>
+            <div className="highlight-cell">
+              <span>Scored days</span>
+              <strong>{rangeScore.count}</strong>
+              <small>of {rangeDates.length} in range</small>
+            </div>
+          </div>
+        </section>
+      </div>
+      <div className="two-col">
+        <section className="panel">
+          <div className="section-title">
+            <h3>Calendar Heatmap</h3>
+            <div className="month-nav">
+              <button type="button" className="small-button" aria-label="Previous month" onClick={() => shiftHeatmap(-1)}><ChevronLeft size={14} aria-hidden="true" /></button>
+              <strong>{heatmapLabel}</strong>
+              <button type="button" className="small-button" aria-label="Next month" onClick={() => shiftHeatmap(1)}><ChevronRight size={14} aria-hidden="true" /></button>
+            </div>
+          </div>
           <div className="heatmap">
             {month.map((date) => {
               const score = scoreForDate(data, date);
@@ -397,19 +486,20 @@ function Dashboard({
       </div>
       <div className="two-col">
         <section className="panel">
-          <div className="section-title"><h3>Streaks</h3><span>Current · longest</span></div>
+          <div className="section-title"><h3>Streaks</h3><span>Current · best in {RANGE_LABEL[range].toLowerCase()} · longest</span></div>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Habit</th><th>Current</th><th>Longest</th></tr></thead>
+              <thead><tr><th>Habit</th><th>Current</th><th>Best in {RANGE_LABEL[range].toLowerCase()}</th><th>Longest</th></tr></thead>
               <tbody>
-                {habitStreaks.map(({ item, current, longest }) => (
+                {habitStreaks.map(({ item, current, longest, rangeBest }) => (
                   <tr key={item.id}>
                     <td>{item.name}</td>
                     <td><span className={`streak-pill ${current >= 7 ? "hot" : current > 0 ? "warm" : ""}`}>{current}{current > 0 ? " 🔥" : ""}</span></td>
+                    <td>{rangeBest}</td>
                     <td>{longest}</td>
                   </tr>
                 ))}
-                {habitStreaks.length === 0 ? <tr><td colSpan={3} className="muted">No active habits yet.</td></tr> : null}
+                {habitStreaks.length === 0 ? <tr><td colSpan={4} className="muted">No active habits yet.</td></tr> : null}
               </tbody>
             </table>
           </div>

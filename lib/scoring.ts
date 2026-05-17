@@ -150,6 +150,60 @@ export function streaksForItem(data: AppData, itemId: string, today: string) {
 
 const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+// Per-habit completion % over a date range. Considers only days where the
+// item was scheduled (plan.scheduled). Score is the same itemScore rule used
+// in scoreForDate, but aggregated per item across the range.
+export function habitPerformance(data: AppData, dates: string[]) {
+  const dateSet = new Set(dates);
+  return data.items
+    .filter((item) => item.active)
+    .map((item) => {
+      const plans = data.plans.filter((plan) => plan.scheduled && plan.item_id === item.id && dateSet.has(plan.date));
+      if (plans.length === 0) return { item, scheduled: 0, completed: 0, percent: 0 };
+      let earned = 0;
+      let completed = 0;
+      for (const plan of plans) {
+        const log = data.logs.find((l) => l.date === plan.date && l.item_id === item.id && !l.is_extra);
+        const status = log?.status || "missed";
+        if (status === "complete") completed += 1;
+        if (status === "complete") earned += 1;
+        else if (item.tracking_type !== "done" && log) {
+          const actual = Number(log.actual_value || 0);
+          const target = Number(plan.target || item.default_target || 1);
+          earned += Math.max(0, Math.min(actual / target, 1));
+        }
+      }
+      return { item, scheduled: plans.length, completed, percent: Math.round((earned / plans.length) * 100) };
+    })
+    .filter((row) => row.scheduled > 0)
+    .sort((a, b) => b.percent - a.percent);
+}
+
+// Best (longest) streak achieved *within* the given date range, per item.
+export function bestStreakInRange(data: AppData, itemId: string, dates: string[]) {
+  const dateSet = new Set(dates);
+  const scheduledInRange = data.plans
+    .filter((plan) => plan.scheduled && plan.item_id === itemId && dateSet.has(plan.date))
+    .map((plan) => plan.date)
+    .sort();
+  if (scheduledInRange.length === 0) return 0;
+  const logsByDate = new Map<string, boolean>();
+  data.logs
+    .filter((log) => log.item_id === itemId && !log.is_extra)
+    .forEach((log) => logsByDate.set(log.date, log.status === "complete"));
+  let best = 0;
+  let run = 0;
+  for (const date of scheduledInRange) {
+    if (logsByDate.get(date) === true) {
+      run += 1;
+      if (run > best) best = run;
+    } else {
+      run = 0;
+    }
+  }
+  return best;
+}
+
 export function dayOfWeekAverages(data: AppData, dates: string[]) {
   const buckets: Array<{ total: number; count: number }> = Array.from({ length: 7 }, () => ({ total: 0, count: 0 }));
   dates.forEach((date) => {
